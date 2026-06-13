@@ -32,9 +32,9 @@
 </dependency>
 <!--  MySQL  -->
 <dependency>
-<groupId>com.mysql</groupId>
-<artifactId>mysql-connector-j</artifactId>
-<scope>runtime</scope>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <scope>runtime</scope>
 </dependency>
 <!--  Lombok  -->
 <dependency>
