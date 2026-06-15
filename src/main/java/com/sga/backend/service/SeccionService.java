@@ -31,23 +31,43 @@ public class SeccionService {
 
     public SeccionResponse crear(SeccionRequest req) {
 
-        // Validar cruce de docente
+        // HU03-06: Validar que el periodo no esté cerrado
+        PeriodoAcademico periodo = periodoRepository.findById(req.getIdPeriodo())
+            .orElseThrow(() -> new RuntimeException("Periodo no encontrado"));
+        if ("CERRADO".equals(periodo.getEstado())) {
+            throw new RuntimeException(
+                "No se puede programar clases: el periodo académico está cerrado");
+        }
+
+        // HU03-03: Validar cruce de horario del docente
         if (req.getIdDocente() != null && req.getHorario() != null) {
             List<Seccion> cruceDoc = seccionRepository.findCruceDocente(
                 req.getIdDocente(), req.getHorario(), req.getIdPeriodo());
             if (!cruceDoc.isEmpty()) {
                 throw new RuntimeException(
-                    "Conflicto: el docente ya tiene clase en ese horario");
+                    "Conflicto de horario: el docente ya tiene una clase asignada en ese horario");
             }
         }
 
-        // Validar cruce de aula
-        if (req.getIdAula() != null && req.getHorario() != null) {
+        // HU03-04: Validar cruce de horario del aula
+        if (req.getIdAula() != null && !req.getIdAula().isBlank() && req.getHorario() != null) {
             List<Seccion> cruceAula = seccionRepository.findCruceAula(
                 req.getIdAula(), req.getHorario(), req.getIdPeriodo());
             if (!cruceAula.isEmpty()) {
                 throw new RuntimeException(
-                    "Conflicto: el aula ya está ocupada en ese horario");
+                    "Conflicto de horario: el aula ya está ocupada en ese horario");
+            }
+        }
+
+        // HU03-05: Validar aforo del aula vs capacidad solicitada
+        if (req.getIdAula() != null && !req.getIdAula().isBlank()) {
+            Aula aula = aulaRepository.findById(req.getIdAula())
+                .orElseThrow(() -> new RuntimeException("Aula no encontrada"));
+            if (req.getCapacidadMaxima() > aula.getAforo()) {
+                throw new RuntimeException(
+                    "Aforo insuficiente: el aula '" + aula.getCodigo() +
+                    "' tiene capacidad máxima de " + aula.getAforo() +
+                    " personas, pero se solicitaron " + req.getCapacidadMaxima());
             }
         }
 
@@ -56,9 +76,6 @@ public class SeccionService {
 
         usuarioRepository.findById(req.getIdDocente())
             .orElseThrow(() -> new RuntimeException("Docente no encontrado"));
-
-        periodoRepository.findById(req.getIdPeriodo())
-            .orElseThrow(() -> new RuntimeException("Periodo no encontrado"));
 
         Seccion s = new Seccion();
         s.setIdSeccion(req.getIdSeccion());
@@ -81,6 +98,48 @@ public class SeccionService {
     public SeccionResponse editar(String id, SeccionRequest req) {
         Seccion s = seccionRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("Sección no encontrada"));
+
+        // HU03-06: Validar que el periodo no esté cerrado antes de editar
+        PeriodoAcademico periodo = periodoRepository.findById(s.getIdPeriodo())
+            .orElseThrow(() -> new RuntimeException("Periodo no encontrado"));
+        if ("CERRADO".equals(periodo.getEstado())) {
+            throw new RuntimeException(
+                "No se puede modificar la programación: el periodo académico está cerrado");
+        }
+
+        // HU03-03: Validar cruce de horario del docente (excluyendo la sección actual)
+        if (req.getIdDocente() != null && req.getHorario() != null) {
+            List<Seccion> cruceDoc = seccionRepository.findCruceDocente(
+                req.getIdDocente(), req.getHorario(), s.getIdPeriodo());
+            cruceDoc.removeIf(sec -> sec.getIdSeccion().equals(id));
+            if (!cruceDoc.isEmpty()) {
+                throw new RuntimeException(
+                    "Conflicto de horario: el docente ya tiene una clase asignada en ese horario");
+            }
+        }
+
+        // HU03-04: Validar cruce de horario del aula (excluyendo la sección actual)
+        if (req.getIdAula() != null && !req.getIdAula().isBlank() && req.getHorario() != null) {
+            List<Seccion> cruceAula = seccionRepository.findCruceAula(
+                req.getIdAula(), req.getHorario(), s.getIdPeriodo());
+            cruceAula.removeIf(sec -> sec.getIdSeccion().equals(id));
+            if (!cruceAula.isEmpty()) {
+                throw new RuntimeException(
+                    "Conflicto de horario: el aula ya está ocupada en ese horario");
+            }
+        }
+
+        // HU03-05: Validar aforo del aula vs capacidad solicitada
+        if (req.getIdAula() != null && !req.getIdAula().isBlank()) {
+            Aula aula = aulaRepository.findById(req.getIdAula())
+                .orElseThrow(() -> new RuntimeException("Aula no encontrada"));
+            if (req.getCapacidadMaxima() > aula.getAforo()) {
+                throw new RuntimeException(
+                    "Aforo insuficiente: el aula '" + aula.getCodigo() +
+                    "' tiene capacidad máxima de " + aula.getAforo() +
+                    " personas, pero se solicitaron " + req.getCapacidadMaxima());
+            }
+        }
 
         s.setCodigo(req.getCodigo());
         s.setCapacidadMaxima(req.getCapacidadMaxima());
