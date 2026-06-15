@@ -40,6 +40,23 @@ public class AccesoServicioController {
         return ResponseEntity.ok(result);
     }
 
+    @PostMapping("/sincronizar")
+    public ResponseEntity<Map<String, Object>> sincronizar() {
+        try {
+            int count = accesoServicioService.sincronizarConTimeout();
+            Map<String, Object> result = new HashMap<>();
+            result.put("accesosActivados", count);
+            result.put("mensaje", count > 0
+                ? count + " acceso(s) sincronizado(s) exitosamente"
+                : "No hay accesos pendientes de sincronización");
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException e) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(err);
+        }
+    }
+
     @PatchMapping("/suspender/{idEstudiante}")
     public ResponseEntity<Void> suspender(
             @PathVariable String idEstudiante,

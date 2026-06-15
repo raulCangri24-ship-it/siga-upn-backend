@@ -101,6 +101,15 @@ public class SincronizacionService {
     }
 
     @Transactional
+    public EstadoEstudianteResponse levantarRestriccionPorDeuda(String idDeuda) {
+        List<RestriccionFinanciera> activas = restriccionRepository.findByIdDeudaAndActiva(idDeuda, true);
+        if (activas.isEmpty()) {
+            throw new RuntimeException("No existe restricción activa para esta deuda");
+        }
+        return levantarRestriccion(activas.get(0).getIdRestriccion());
+    }
+
+    @Transactional
     public EstadoEstudianteResponse levantarRestriccion(String idRestriccion) {
         RestriccionFinanciera r = restriccionRepository.findById(idRestriccion)
             .orElseThrow(() -> new RuntimeException("Restricción no encontrada: " + idRestriccion));

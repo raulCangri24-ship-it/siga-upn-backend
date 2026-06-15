@@ -22,12 +22,14 @@ public class DashboardController {
     }
 
     @GetMapping("/docente")
-    public ResponseEntity<DashboardDocenteResponse> getDocente() {
-        return ResponseEntity.ok(dashboardService.getDocente());
+    public ResponseEntity<DashboardDocenteResponse> getDocente(
+            @RequestParam(defaultValue = "PER001") String periodo) {
+        return ResponseEntity.ok(dashboardService.getDocente(periodo));
     }
 
     @GetMapping("/rector")
-    public ResponseEntity<DashboardRectorResponse> getRector() {
-        return ResponseEntity.ok(dashboardService.getRector());
+    public ResponseEntity<DashboardRectorResponse> getRector(
+            @RequestParam(defaultValue = "PER001") String periodo) {
+        return ResponseEntity.ok(dashboardService.getRector(periodo));
     }
 }

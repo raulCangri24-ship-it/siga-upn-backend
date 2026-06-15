@@ -7,20 +7,20 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 public class DashboardDocenteResponse {
-    private Integer totalDocentes;
-    private Integer docentesActivos;
-    private Integer totalSecciones;
-    private Integer actasFirmadas;
-    private Integer actasBorrador;
-    private Double promedioAsistencia;
-    private Double cumplimientoActas;
-    private List<SeccionPorDocente> seccionesPorDocente;
+    private List<DocenteStats> docentes;
+    private String periodo;
 
     @Data
     @AllArgsConstructor
-    public static class SeccionPorDocente {
-        private String nombreDocente;
-        private Integer totalSecciones;
-        private Integer actasFirmadas;
+    public static class DocenteStats {
+        private String idDocente;
+        private String nombre;
+        private Integer seccionesAsignadas;
+        private Integer seccionesConSilabo;
+        private Double cumplimientoCurricular;
+        private Integer estudiantesAsignados;
+        private Integer asistenciasRegistradas;
+        private Integer notasRegistradas;
+        private Double cargaEjecutada;
     }
 }

@@ -2,23 +2,27 @@ package com.sga.backend.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import java.util.List;
 
 @Data
 @AllArgsConstructor
 public class DashboardRectorResponse {
-    private Double totalIngresos;
-    private Integer deudasVencidas;
-    private Double montoDeudaTotal;
-    private Integer restriccionesActivas;
-    private Integer estudiantesConAccesoActivo;
-    private Double ocupacionPromedio;
-    private ResumenFinanciero resumenFinanciero;
+    private String periodo;
+    private Integer totalAforo;
+    private Integer cuposInscritos;
+    private Double ocupacion;
+    private Double totalDeudas;
+    private Double totalPagos;
+    private Double deudaPendiente;
+    private Double proyeccionIngresos;
+    private Boolean proyeccionParcial;
+    private List<DistribucionPago> distribucionPagos;
 
     @Data
     @AllArgsConstructor
-    public static class ResumenFinanciero {
-        private Double totalCobrado;
-        private Double totalPendiente;
-        private Double totalVencido;
+    public static class DistribucionPago {
+        private String estado;
+        private Integer cantidad;
+        private Double monto;
     }
 }

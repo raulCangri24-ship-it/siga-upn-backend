@@ -3,26 +3,31 @@ package com.sga.backend.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import java.util.List;
-import java.util.Map;
 
 @Data
 @AllArgsConstructor
 public class DashboardEstudiantilResponse {
     private Integer totalEstudiantes;
-    private Integer estudiantesActivos;
-    private Integer totalMatriculas;
-    private Integer estudiantesConDeudaVencida;
+    private Integer matriculadosActivos;
+    private Integer deserciones;
     private Double tasaDesercion;
-    private Double promedioGeneral;
-    private Map<String, Long> estudiantesPorEstado;
-    private Map<String, Long> matriculasPorEstado;
-    private List<EstudianteRendimiento> top5EstudiantesRendimiento;
+    private List<CarreraStats> porCarrera;
+    private List<PeriodoStats> comparacionPeriodos;
 
     @Data
     @AllArgsConstructor
-    public static class EstudianteRendimiento {
-        private String idEstudiante;
-        private String nombre;
-        private Double promedio;
+    public static class CarreraStats {
+        private String carrera;
+        private Integer matriculados;
+        private Integer deserciones;
+    }
+
+    @Data
+    @AllArgsConstructor
+    public static class PeriodoStats {
+        private String periodo;
+        private Integer matriculados;
+        private Integer deserciones;
+        private Double tasaDesercion;
     }
 }

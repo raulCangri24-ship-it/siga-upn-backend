@@ -11,6 +11,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -110,6 +112,50 @@ public class AccesoServicioService {
         }
 
         return fallidos.size();
+    }
+
+    // HU12-04: Timeout de 2 minutos + HU12-05: reintentos con trazabilidad
+    public int sincronizarConTimeout() {
+        try {
+            return CompletableFuture.supplyAsync(this::ejecutarSincronizacion)
+                .orTimeout(2, TimeUnit.MINUTES)
+                .get();
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (e.getCause() instanceof java.util.concurrent.TimeoutException) {
+                throw new RuntimeException("Tiempo de sincronización excedido (2 min)");
+            }
+            throw new RuntimeException("Error en sincronización: " + e.getCause().getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Sincronización interrumpida");
+        }
+    }
+
+    private int ejecutarSincronizacion() {
+        List<AccesoServicio> pendientes = accesoServicioRepository
+            .findByEstadoAndIntentosLessThan(AccesoServicio.EstadoAcceso.PENDIENTE, 3);
+        int activados = 0;
+        for (AccesoServicio a : pendientes) {
+            boolean exito = false;
+            for (int i = 0; i < 3 && !exito; i++) {
+                try {
+                    a.setIntentos(a.getIntentos() + 1);
+                    a.setEstado(AccesoServicio.EstadoAcceso.ACTIVO);
+                    a.setFechaActivacion(LocalDateTime.now());
+                    accesoServicioRepository.save(a);
+                    exito = true;
+                    activados++;
+                } catch (Exception e) {
+                    if (i < 2) {
+                        try { Thread.sleep(5000L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    } else {
+                        a.setEstado(AccesoServicio.EstadoAcceso.SUSPENDIDO);
+                        accesoServicioRepository.save(a);
+                    }
+                }
+            }
+        }
+        return activados;
     }
 
     private AccesoServicioResponse toResponse(AccesoServicio a) {

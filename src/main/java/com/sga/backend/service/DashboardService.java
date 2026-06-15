@@ -8,7 +8,6 @@ import com.sga.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -22,211 +21,207 @@ public class DashboardService {
     private final DeudaRepository deudaRepository;
     private final PagoRepository pagoRepository;
     private final SeccionRepository seccionRepository;
-    private final ActaRepository actaRepository;
     private final AsistenciaRepository asistenciaRepository;
-    private final AccesoServicioRepository accesoServicioRepository;
-    private final RestriccionRepository restriccionRepository;
+    private final AulaRepository aulaRepository;
+    private final SilaboRepository silaboRepository;
+    private final EvaluacionRepository evaluacionRepository;
+    private final CursoRepository cursoRepository;
+    private final PlanEstudiosRepository planEstudiosRepository;
+    private final PeriodoRepository periodoRepository;
 
+    // HU-13: Dashboard Estudiantil
     public DashboardEstudiantilResponse getEstudiantil() {
         List<Usuario> todos = usuarioRepository.findAll();
-        Map<String, Usuario> usuariosMap = todos.stream()
-            .collect(Collectors.toMap(Usuario::getIdUsuario, u -> u));
-
         List<Usuario> estudiantes = todos.stream()
             .filter(u -> u.getRol() != null && "ROL002".equals(u.getRol().getIdRol()))
             .collect(Collectors.toList());
-
         int totalEstudiantes = estudiantes.size();
-        int estudiantesActivos = (int) estudiantes.stream()
-            .filter(u -> u.getEstado() == Usuario.EstadoUsuario.ACTIVO)
-            .count();
 
-        List<Matricula> matriculas = matriculaRepository.findAll();
-        int totalMatriculas = (int) matriculas.stream()
-            .filter(m -> m.getEstado() == Matricula.EstadoMatricula.CONFIRMADA)
-            .count();
+        Map<String, String> seccionToCurso = seccionRepository.findAll().stream()
+            .collect(Collectors.toMap(Seccion::getIdSeccion, Seccion::getIdCurso, (a, b) -> a));
+        Map<String, String> cursoToPlan = cursoRepository.findAll().stream()
+            .collect(Collectors.toMap(Curso::getIdCurso, Curso::getIdPlan, (a, b) -> a));
+        Map<String, String> planToCarrera = planEstudiosRepository.findAll().stream()
+            .collect(Collectors.toMap(PlanEstudios::getIdPlan, PlanEstudios::getCarrera, (a, b) -> a));
 
-        int estudiantesConDeudaVencida = (int) deudaRepository.findAll().stream()
-            .filter(d -> d.getEstado() == Deuda.EstadoDeuda.VENCIDA)
-            .map(Deuda::getIdEstudiante)
-            .distinct()
-            .count();
-
-        long total = matriculas.size();
-        long canceladas = matriculas.stream()
-            .filter(m -> m.getEstado() == Matricula.EstadoMatricula.CANCELADA)
-            .count();
-        double tasaDesercion = total > 0
-            ? Math.round((canceladas * 1000.0 / total)) / 10.0
-            : 0.0;
-
-        List<Nota> notas = notaRepository.findAll();
-        OptionalDouble avg = notas.stream()
-            .filter(n -> n.getValor() != null)
-            .mapToDouble(n -> n.getValor().doubleValue())
-            .average();
-        double promedioGeneral = avg.isPresent()
-            ? Math.round(avg.getAsDouble() * 100.0) / 100.0
-            : 0.0;
-
-        Map<String, Long> estudiantesPorEstado = estudiantes.stream()
-            .collect(Collectors.groupingBy(u -> u.getEstado().name(), Collectors.counting()));
-        for (String s : new String[]{"ACTIVO", "INACTIVO", "BLOQUEADO"})
-            estudiantesPorEstado.putIfAbsent(s, 0L);
-
-        Map<String, Long> matriculasPorEstado = matriculas.stream()
-            .collect(Collectors.groupingBy(m -> m.getEstado().name(), Collectors.counting()));
-        for (String s : new String[]{"CONFIRMADA", "CANCELADA", "PENDIENTE"})
-            matriculasPorEstado.putIfAbsent(s, 0L);
-
-        Map<String, List<BigDecimal>> notasPorEst = notas.stream()
-            .filter(n -> n.getValor() != null)
-            .collect(Collectors.groupingBy(
-                Nota::getIdEstudiante,
-                Collectors.mapping(Nota::getValor, Collectors.toList())
-            ));
-
-        List<DashboardEstudiantilResponse.EstudianteRendimiento> top5 = notasPorEst.entrySet().stream()
-            .map(e -> {
-                double prom = e.getValue().stream()
-                    .mapToDouble(BigDecimal::doubleValue).average().orElse(0.0);
-                prom = Math.round(prom * 100.0) / 100.0;
-                Usuario u = usuariosMap.get(e.getKey());
-                String nombre = u != null ? u.getNombre() + " " + u.getApellido() : e.getKey();
-                return new DashboardEstudiantilResponse.EstudianteRendimiento(e.getKey(), nombre, prom);
-            })
-            .sorted(Comparator.comparingDouble(
-                DashboardEstudiantilResponse.EstudianteRendimiento::getPromedio).reversed())
-            .limit(5)
+        List<Matricula> todasMatriculas = matriculaRepository.findAll();
+        List<Matricula> matriculasPer001 = todasMatriculas.stream()
+            .filter(m -> "PER001".equals(m.getIdPeriodo()))
             .collect(Collectors.toList());
 
+        int matriculadosActivos = (int) matriculasPer001.stream()
+            .filter(m -> m.getEstado() == Matricula.EstadoMatricula.CONFIRMADA).count();
+        int deserciones = (int) matriculasPer001.stream()
+            .filter(m -> m.getEstado() == Matricula.EstadoMatricula.CANCELADA).count();
+        double tasaDesercion = (matriculadosActivos + deserciones) > 0
+            ? Math.round((deserciones * 1000.0 / (matriculadosActivos + deserciones))) / 10.0
+            : 0.0;
+
+        List<DashboardEstudiantilResponse.CarreraStats> porCarrera =
+            calcularPorCarrera(matriculasPer001, seccionToCurso, cursoToPlan, planToCarrera);
+
+        Map<String, PeriodoAcademico> periodosMap = periodoRepository.findAll().stream()
+            .collect(Collectors.toMap(PeriodoAcademico::getIdPeriodo, p -> p));
+
+        List<DashboardEstudiantilResponse.PeriodoStats> comparacion =
+            List.of("PER001", "PER002", "PER003").stream()
+                .map(pid -> {
+                    List<Matricula> mats = todasMatriculas.stream()
+                        .filter(m -> pid.equals(m.getIdPeriodo()))
+                        .collect(Collectors.toList());
+                    int conf = (int) mats.stream()
+                        .filter(m -> m.getEstado() == Matricula.EstadoMatricula.CONFIRMADA).count();
+                    int canc = (int) mats.stream()
+                        .filter(m -> m.getEstado() == Matricula.EstadoMatricula.CANCELADA).count();
+                    double tasa = (conf + canc) > 0
+                        ? Math.round((canc * 1000.0 / (conf + canc))) / 10.0 : 0.0;
+                    String nombre = periodosMap.containsKey(pid)
+                        ? periodosMap.get(pid).getNombre() : pid;
+                    return new DashboardEstudiantilResponse.PeriodoStats(nombre, conf, canc, tasa);
+                })
+                .collect(Collectors.toList());
+
         return new DashboardEstudiantilResponse(
-            totalEstudiantes, estudiantesActivos, totalMatriculas,
-            estudiantesConDeudaVencida, tasaDesercion, promedioGeneral,
-            estudiantesPorEstado, matriculasPorEstado, top5
-        );
+            totalEstudiantes, matriculadosActivos, deserciones, tasaDesercion,
+            porCarrera, comparacion);
     }
 
-    public DashboardDocenteResponse getDocente() {
+    private List<DashboardEstudiantilResponse.CarreraStats> calcularPorCarrera(
+            List<Matricula> matriculas,
+            Map<String, String> seccionToCurso,
+            Map<String, String> cursoToPlan,
+            Map<String, String> planToCarrera) {
+
+        Map<String, int[]> stats = new LinkedHashMap<>();
+        for (Matricula m : matriculas) {
+            String cursoId = seccionToCurso.get(m.getIdSeccion());
+            String planId  = cursoId != null ? cursoToPlan.get(cursoId) : null;
+            String carrera = planId != null ? planToCarrera.get(planId) : null;
+            if (carrera == null) carrera = "Sin carrera";
+            int[] s = stats.computeIfAbsent(carrera, k -> new int[]{0, 0});
+            if (m.getEstado() == Matricula.EstadoMatricula.CONFIRMADA) s[0]++;
+            else if (m.getEstado() == Matricula.EstadoMatricula.CANCELADA) s[1]++;
+        }
+        return stats.entrySet().stream()
+            .map(e -> new DashboardEstudiantilResponse.CarreraStats(
+                e.getKey(), e.getValue()[0], e.getValue()[1]))
+            .collect(Collectors.toList());
+    }
+
+    // HU-14: Dashboard eficiencia docente
+    public DashboardDocenteResponse getDocente(String periodo) {
         List<Usuario> todos = usuarioRepository.findAll();
         Map<String, Usuario> usuariosMap = todos.stream()
             .collect(Collectors.toMap(Usuario::getIdUsuario, u -> u));
-
         List<Usuario> docentes = todos.stream()
             .filter(u -> u.getRol() != null && "ROL003".equals(u.getRol().getIdRol()))
             .collect(Collectors.toList());
 
-        int totalDocentes = docentes.size();
-        int docentesActivos = (int) docentes.stream()
-            .filter(u -> u.getEstado() == Usuario.EstadoUsuario.ACTIVO)
-            .count();
-
-        List<Seccion> secciones = seccionRepository.findByIdPeriodo("PER001");
-        int totalSecciones = secciones.size();
-
-        List<Acta> actas = actaRepository.findAll();
-        int actasFirmadas = (int) actas.stream()
-            .filter(a -> a.getEstado() == Acta.EstadoActa.FIRMADA)
-            .count();
-        int actasBorrador = (int) actas.stream()
-            .filter(a -> a.getEstado() == Acta.EstadoActa.BORRADOR)
-            .count();
-
-        List<Asistencia> asistencias = asistenciaRepository.findAll();
-        long totalAs = asistencias.size();
-        long presentes = asistencias.stream()
-            .filter(a -> a.getEstado() == Asistencia.EstadoAsistencia.PRESENTE)
-            .count();
-        double promedioAsistencia = totalAs > 0
-            ? Math.round(presentes * 1000.0 / totalAs) / 10.0
-            : 0.0;
-
-        int totalActas = actas.size();
-        double cumplimientoActas = totalActas > 0
-            ? Math.round(actasFirmadas * 1000.0 / totalActas) / 10.0
-            : 0.0;
-
+        List<Seccion> secciones = seccionRepository.findByIdPeriodo(periodo);
         Map<String, List<Seccion>> porDocente = secciones.stream()
             .collect(Collectors.groupingBy(Seccion::getIdDocente));
 
-        List<DashboardDocenteResponse.SeccionPorDocente> seccionesPorDocente = porDocente.entrySet().stream()
-            .map(e -> {
-                String idDoc = e.getKey();
-                Usuario u = usuariosMap.get(idDoc);
-                String nombre = u != null ? u.getNombre() + " " + u.getApellido() : idDoc;
-                int totalSec = e.getValue().size();
-                Set<String> idsSec = e.getValue().stream()
-                    .map(Seccion::getIdSeccion).collect(Collectors.toSet());
-                int firmadas = (int) actas.stream()
-                    .filter(a -> a.getEstado() == Acta.EstadoActa.FIRMADA
-                        && idsSec.contains(a.getIdSeccion()))
+        List<DashboardDocenteResponse.DocenteStats> docentesList = docentes.stream()
+            .map(doc -> {
+                String idDoc = doc.getIdUsuario();
+                String nombre = doc.getNombre() + " " + doc.getApellido();
+                List<Seccion> secs = porDocente.getOrDefault(idDoc, Collections.emptyList());
+                int seccionesAsignadas = secs.size();
+
+                int seccionesConSilabo = (int) secs.stream()
+                    .filter(s -> silaboRepository.findByIdSeccion(s.getIdSeccion()).isPresent())
                     .count();
-                return new DashboardDocenteResponse.SeccionPorDocente(nombre, totalSec, firmadas);
+                double cumplimiento = seccionesAsignadas > 0
+                    ? round1((seccionesConSilabo * 100.0) / seccionesAsignadas) : 0.0;
+
+                int estudiantesAsignados = secs.stream()
+                    .mapToInt(s -> matriculaRepository
+                        .findByIdSeccionAndEstado(s.getIdSeccion(), Matricula.EstadoMatricula.CONFIRMADA).size())
+                    .sum();
+
+                int asistenciasRegistradas = secs.stream()
+                    .mapToInt(s -> asistenciaRepository.findByIdSeccion(s.getIdSeccion()).size())
+                    .sum();
+
+                int notasRegistradas = secs.stream()
+                    .mapToInt(s -> {
+                        Optional<Silabo> sil = silaboRepository.findByIdSeccion(s.getIdSeccion());
+                        if (sil.isEmpty()) return 0;
+                        return evaluacionRepository.findByIdSilabo(sil.get().getIdSilabo())
+                            .stream()
+                            .mapToInt(e -> notaRepository.findByIdEvaluacion(e.getIdEvaluacion()).size())
+                            .sum();
+                    })
+                    .sum();
+
+                double cargaEjecutada = estudiantesAsignados > 0
+                    ? Math.min(round1((asistenciasRegistradas * 100.0) / (estudiantesAsignados * 16.0)), 100.0)
+                    : 0.0;
+
+                return new DashboardDocenteResponse.DocenteStats(
+                    idDoc, nombre, seccionesAsignadas, seccionesConSilabo, cumplimiento,
+                    estudiantesAsignados, asistenciasRegistradas, notasRegistradas, cargaEjecutada);
             })
-            .sorted(Comparator.comparing(
-                DashboardDocenteResponse.SeccionPorDocente::getTotalSecciones).reversed())
             .collect(Collectors.toList());
 
-        return new DashboardDocenteResponse(
-            totalDocentes, docentesActivos, totalSecciones,
-            actasFirmadas, actasBorrador, promedioAsistencia,
-            cumplimientoActas, seccionesPorDocente
-        );
+        String nombrePeriodo = periodoRepository.findById(periodo)
+            .map(PeriodoAcademico::getNombre).orElse(periodo);
+
+        return new DashboardDocenteResponse(docentesList, nombrePeriodo);
     }
 
-    public DashboardRectorResponse getRector() {
-        List<Pago> pagos = pagoRepository.findAll();
-        double totalIngresos = pagos.stream()
-            .filter(p -> p.getEstado() == Pago.EstadoPago.CONFIRMADO)
-            .mapToDouble(p -> p.getMonto().doubleValue())
-            .sum();
+    // HU-15: Dashboard estratégico del rector
+    public DashboardRectorResponse getRector(String periodo) {
+        int totalAforo = aulaRepository.findAll().stream()
+            .mapToInt(Aula::getAforo).sum();
+
+        List<Seccion> seccionesPer = seccionRepository.findByIdPeriodo(periodo);
+        int cuposInscritos = seccionesPer.stream()
+            .mapToInt(s -> s.getMatriculados() != null ? s.getMatriculados() : 0).sum();
+
+        double ocupacion = totalAforo > 0
+            ? round2((cuposInscritos * 100.0) / totalAforo) : 0.0;
 
         List<Deuda> deudas = deudaRepository.findAll();
-        long deudasVencidas = deudas.stream()
-            .filter(d -> d.getEstado() == Deuda.EstadoDeuda.VENCIDA).count();
-        double montoDeudaTotal = deudas.stream()
-            .filter(d -> d.getEstado() == Deuda.EstadoDeuda.VENCIDA)
+        double totalDeudas = deudas.stream()
             .mapToDouble(d -> d.getMonto().doubleValue()).sum();
 
-        int restriccionesActivas = (int) restriccionRepository.findAll().stream()
-            .filter(r -> Boolean.TRUE.equals(r.getActiva())).count();
+        List<Pago> pagos = pagoRepository.findAll();
+        double totalPagos = pagos.stream()
+            .filter(p -> p.getEstado() == Pago.EstadoPago.CONFIRMADO)
+            .mapToDouble(p -> p.getMonto().doubleValue()).sum();
 
-        int estudiantesConAccesoActivo = (int) accesoServicioRepository.findAll().stream()
-            .filter(a -> a.getEstado() == AccesoServicio.EstadoAcceso.ACTIVO)
-            .map(AccesoServicio::getIdEstudiante).distinct().count();
+        double deudaPendiente = totalDeudas - totalPagos;
+        double proyeccionIngresos = totalPagos + (deudaPendiente * 0.7);
 
-        List<Seccion> secciones = seccionRepository.findAll();
-        OptionalDouble ocup = secciones.stream()
-            .filter(s -> s.getCapacidadMaxima() != null && s.getCapacidadMaxima() > 0)
-            .mapToDouble(s -> (s.getMatriculados() * 100.0) / s.getCapacidadMaxima())
-            .average();
-        double ocupacionPromedio = ocup.isPresent()
-            ? Math.round(ocup.getAsDouble() * 10.0) / 10.0
-            : 0.0;
+        boolean proyeccionParcial = deudas.stream()
+            .anyMatch(d -> d.getEstado() == Deuda.EstadoDeuda.PENDIENTE
+                || d.getEstado() == Deuda.EstadoDeuda.VENCIDA);
 
-        double totalPendiente = deudas.stream()
-            .filter(d -> d.getEstado() == Deuda.EstadoDeuda.PENDIENTE)
-            .mapToDouble(d -> d.getMonto().doubleValue()).sum();
+        Map<String, long[]> distMap = new LinkedHashMap<>();
+        distMap.put("CONFIRMADO", new long[]{0, 0});
+        distMap.put("PROCESANDO", new long[]{0, 0});
+        distMap.put("ANULADO",    new long[]{0, 0});
+        for (Pago p : pagos) {
+            long[] arr = distMap.computeIfAbsent(p.getEstado().name(), k -> new long[]{0, 0});
+            arr[0]++;
+            arr[1] += Math.round(p.getMonto().doubleValue() * 100);
+        }
+        List<DashboardRectorResponse.DistribucionPago> distribucion = distMap.entrySet().stream()
+            .filter(e -> e.getValue()[0] > 0)
+            .map(e -> new DashboardRectorResponse.DistribucionPago(
+                e.getKey(), (int) e.getValue()[0], round2(e.getValue()[1] / 100.0)))
+            .collect(Collectors.toList());
 
-        DashboardRectorResponse.ResumenFinanciero resumen =
-            new DashboardRectorResponse.ResumenFinanciero(
-                round2(totalIngresos),
-                round2(totalPendiente),
-                round2(montoDeudaTotal)
-            );
+        String nombrePeriodo = periodoRepository.findById(periodo)
+            .map(PeriodoAcademico::getNombre).orElse(periodo);
 
         return new DashboardRectorResponse(
-            round2(totalIngresos),
-            (int) deudasVencidas,
-            round2(montoDeudaTotal),
-            restriccionesActivas,
-            estudiantesConAccesoActivo,
-            ocupacionPromedio,
-            resumen
-        );
+            nombrePeriodo, totalAforo, cuposInscritos, ocupacion,
+            round2(totalDeudas), round2(totalPagos), round2(deudaPendiente),
+            round2(proyeccionIngresos), proyeccionParcial, distribucion);
     }
 
-    private double round2(double v) {
-        return Math.round(v * 100.0) / 100.0;
-    }
+    private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
+    private double round2(double v) { return Math.round(v * 100.0) / 100.0; }
 }
