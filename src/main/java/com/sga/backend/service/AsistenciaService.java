@@ -6,8 +6,10 @@ import com.sga.backend.dto.MaterialRequest;
 import com.sga.backend.dto.MaterialResponse;
 import com.sga.backend.entity.Asistencia;
 import com.sga.backend.entity.Material;
+import com.sga.backend.entity.Seccion;
 import com.sga.backend.repository.AsistenciaRepository;
 import com.sga.backend.repository.MaterialRepository;
+import com.sga.backend.repository.SeccionRepository;
 import com.sga.backend.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,7 @@ public class AsistenciaService {
 
     private final AsistenciaRepository asistenciaRepository;
     private final MaterialRepository materialRepository;
+    private final SeccionRepository seccionRepository;
     private final UsuarioRepository usuarioRepository;
 
     private static final DateTimeFormatter FMT =
@@ -33,6 +36,13 @@ public class AsistenciaService {
     // Registrar asistencia masiva por sesión
     @Transactional
     public List<AsistenciaResponse> registrarAsistencia(AsistenciaRequest req) {
+        // HU09-02: Verificar que el docente esté asignado a esta sección
+        Seccion seccion = seccionRepository.findById(req.getIdSeccion())
+            .orElseThrow(() -> new RuntimeException("Sección no encontrada"));
+        if (!seccion.getIdDocente().equals(req.getIdDocente())) {
+            throw new RuntimeException("Acceso denegado: no estás asignado a esta sección");
+        }
+
         LocalDate fecha = LocalDate.parse(req.getFecha());
 
         for (AsistenciaRequest.AsistenciaItem item : req.getRegistros()) {

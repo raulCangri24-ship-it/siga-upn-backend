@@ -25,6 +25,7 @@ public class SincronizacionService {
     private final RestriccionRepository restriccionRepository;
     private final MatriculaRepository matriculaRepository;
     private final UsuarioRepository usuarioRepository;
+    private final NotificacionService notificacionService;
 
     @Lazy
     @Autowired
@@ -89,6 +90,11 @@ public class SincronizacionService {
             restriccionRepository.findByIdDeudaAndActiva(idDeuda, true);
         if (existentes.isEmpty()) {
             crearRestriccion(idEstudiante, idDeuda, RestriccionFinanciera.TipoRestriccion.valueOf(tipo));
+            // HU11-04: Notificar bloqueo al estudiante
+            Deuda deuda = deudaRepository.findById(idDeuda).orElse(null);
+            String concepto = deuda != null ? deuda.getConcepto() : "deuda pendiente";
+            notificacionService.crear(idEstudiante, "BLOQUEO",
+                "Tu acceso ha sido bloqueado por deuda pendiente: " + concepto);
         }
 
         return obtenerEstadoCompleto(idEstudiante);
@@ -106,6 +112,10 @@ public class SincronizacionService {
         r.setActiva(false);
         r.setFechaLevantamiento(LocalDateTime.now());
         restriccionRepository.save(r);
+
+        // HU11-04: Notificar desbloqueo al estudiante
+        notificacionService.crear(r.getIdEstudiante(), "DESBLOQUEO",
+            "Tu restricción financiera ha sido levantada. Ya puedes acceder a los servicios.");
 
         // Rehabilitar accesos a servicios externos si los hubiera suspendidos
         accesoServicioService.rehabilitarAccesos(r.getIdEstudiante());

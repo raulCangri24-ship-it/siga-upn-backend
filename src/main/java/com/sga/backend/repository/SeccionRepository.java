@@ -18,4 +18,6 @@ public interface SeccionRepository extends JpaRepository<Seccion, String> {
 
     @Query("SELECT s FROM Seccion s WHERE s.idAula = :idAula AND s.horario = :horario AND s.idPeriodo = :idPeriodo")
     List<Seccion> findCruceAula(String idAula, String horario, String idPeriodo);
+
+    List<Seccion> findByIdCurso(String idCurso);
 }

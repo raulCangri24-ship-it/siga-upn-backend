@@ -14,8 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -25,7 +25,12 @@ public class MatriculaService {
     private final SeccionRepository seccionRepository;
     private final CursoRepository cursoRepository;
     private final PrerequisitoRepository prerequisitoRepository;
+    private final ConvalidacionRepository convalidacionRepository;
+    private final EvaluacionRepository evaluacionRepository;
+    private final NotaRepository notaRepository;
+    private final SilaboRepository silaboRepository;
     private final AulaRepository aulaRepository;
+    private final UsuarioPlanRepository usuarioPlanRepository;
 
     @Lazy
     @Autowired
@@ -34,8 +39,73 @@ public class MatriculaService {
     private static final DateTimeFormatter FMT =
         DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
+    // HU04-05: Obtener planes del estudiante
+    private List<String> obtenerPlanes(String idEstudiante) {
+        return usuarioPlanRepository.findByIdUsuario(idEstudiante)
+            .stream().map(UsuarioPlan::getIdPlan).collect(Collectors.toList());
+    }
+
+    // HU04-01/02/03: Verificar si el estudiante aprobó un curso (promedio >= 11)
+    private boolean verificarAprobacion(String idEstudiante, String idCurso) {
+        List<Seccion> secciones = seccionRepository.findByIdCurso(idCurso);
+        for (Seccion sec : secciones) {
+            boolean tieneMatricula = matriculaRepository
+                .existsByIdEstudianteAndIdSeccionAndEstado(
+                    idEstudiante, sec.getIdSeccion(), Matricula.EstadoMatricula.CONFIRMADA);
+            if (!tieneMatricula) continue;
+
+            Optional<Silabo> silaboOpt = silaboRepository.findByIdSeccion(sec.getIdSeccion());
+            if (silaboOpt.isEmpty()) continue;
+
+            List<Evaluacion> evaluaciones = evaluacionRepository
+                .findByIdSilabo(silaboOpt.get().getIdSilabo());
+            if (evaluaciones.isEmpty()) continue;
+
+            double pesosTotal = 0;
+            double promedioPonderado = 0;
+            for (Evaluacion eva : evaluaciones) {
+                Optional<Nota> nota = notaRepository
+                    .findByIdEstudianteAndIdEvaluacion(idEstudiante, eva.getIdEvaluacion());
+                if (nota.isPresent() && eva.getPeso() != null) {
+                    promedioPonderado += nota.get().getValor().doubleValue()
+                        * eva.getPeso().doubleValue() / 100.0;
+                    pesosTotal += eva.getPeso().doubleValue();
+                }
+            }
+            if (pesosTotal > 0 && (promedioPonderado / (pesosTotal / 100.0)) >= 11.0) return true;
+        }
+        return false;
+    }
+
+    // HU04-01/02/03: Verificar prerrequisito (nota o convalidación)
+    private String verificarPrerrequisitos(String idEstudiante, String idCurso) {
+        List<Prerrequisito> prereqs = prerequisitoRepository.findByIdCurso(idCurso);
+        List<String> faltantes = new ArrayList<>();
+
+        for (Prerrequisito p : prereqs) {
+            // HU04-03: Convalidación aprobada equivale a aprobar el curso
+            boolean tieneConvalidacion = convalidacionRepository
+                .existsByIdEstudianteAndIdCursoAndEstado(
+                    idEstudiante, p.getIdCursoRequerido(),
+                    Convalidacion.EstadoConvalidacion.APROBADA);
+            if (tieneConvalidacion) continue;
+
+            // HU04-01/02: Verificar aprobación por nota
+            if (!verificarAprobacion(idEstudiante, p.getIdCursoRequerido())) {
+                String nombre = cursoRepository.findById(p.getIdCursoRequerido())
+                    .map(Curso::getNombre).orElse(p.getIdCursoRequerido());
+                faltantes.add(nombre);
+            }
+        }
+
+        return faltantes.isEmpty() ? null : "Falta: " + String.join(", ", faltantes);
+    }
+
     public List<CursoDisponibleResponse> obtenerCursosDisponibles(
             String idEstudiante, String idPeriodo) {
+
+        // HU04-05: Filtrar por plan de estudios del estudiante
+        List<String> planesEstudiante = obtenerPlanes(idEstudiante);
 
         List<Seccion> secciones = seccionRepository.findByIdPeriodo(idPeriodo);
         List<CursoDisponibleResponse> resultado = new ArrayList<>();
@@ -47,38 +117,18 @@ public class MatriculaService {
             .map(Matricula::getIdSeccion)
             .collect(Collectors.toList());
 
-        List<String> cursosAprobados = new ArrayList<>();
-
         for (Seccion s : secciones) {
             if (seccionesMatriculadas.contains(s.getIdSeccion())) continue;
 
             Curso curso = cursoRepository.findById(s.getIdCurso()).orElse(null);
             if (curso == null) continue;
 
-            List<Prerrequisito> prereqs = prerequisitoRepository
-                .findByIdCurso(s.getIdCurso());
+            // HU04-05: Solo cursos del plan del estudiante
+            if (!planesEstudiante.isEmpty() && !planesEstudiante.contains(curso.getIdPlan())) continue;
 
-            boolean prereqCumplido = true;
-            String mensajePrereq = "Sin prerrequisitos";
-
-            if (!prereqs.isEmpty()) {
-                List<String> faltantes = new ArrayList<>();
-                for (Prerrequisito p : prereqs) {
-                    if (!cursosAprobados.contains(p.getIdCursoRequerido())) {
-                        Curso cursoReq = cursoRepository
-                            .findById(p.getIdCursoRequerido()).orElse(null);
-                        if (cursoReq != null) {
-                            faltantes.add(cursoReq.getNombre());
-                        }
-                    }
-                }
-                if (faltantes.isEmpty()) {
-                    mensajePrereq = "Prerrequisitos cumplidos ✓";
-                } else {
-                    prereqCumplido = false;
-                    mensajePrereq = "Falta: " + String.join(", ", faltantes);
-                }
-            }
+            String mensajePrereq = verificarPrerrequisitos(idEstudiante, s.getIdCurso());
+            boolean prereqCumplido = mensajePrereq == null;
+            if (prereqCumplido) mensajePrereq = "Prerrequisitos cumplidos ✓";
 
             String nombreAula = s.getIdAula() != null
                 ? aulaRepository.findById(s.getIdAula())
@@ -123,21 +173,15 @@ public class MatriculaService {
             .orElseThrow(() -> new RuntimeException("Sección no encontrada"));
 
         if (seccion.getMatriculados() >= seccion.getCapacidadMaxima()) {
-            throw new RuntimeException("No hay cupos disponibles en esta sección");
+            throw new RuntimeException("No hay cupos disponibles en esta sección (LLENO)");
         }
 
-        List<String> cursosAprobados = new ArrayList<>();
-        List<Prerrequisito> prereqs = prerequisitoRepository
-            .findByIdCurso(seccion.getIdCurso());
-
-        for (Prerrequisito p : prereqs) {
-            if (!cursosAprobados.contains(p.getIdCursoRequerido())) {
-                Curso cursoReq = cursoRepository
-                    .findById(p.getIdCursoRequerido()).orElse(null);
-                String nombre = cursoReq != null ? cursoReq.getNombre() : p.getIdCursoRequerido();
-                throw new RuntimeException(
-                    "No cumples el prerrequisito: " + nombre);
-            }
+        // HU04-01/02/03: Validar prerrequisitos con aprobación real y convalidaciones
+        String errorPrereq = verificarPrerrequisitos(req.getIdEstudiante(), seccion.getIdCurso());
+        if (errorPrereq != null) {
+            throw new RuntimeException(
+                "Prerrequisito pendiente: debes aprobar '" + errorPrereq.replace("Falta: ", "") +
+                "' antes de matricularte en este curso");
         }
 
         Matricula m;

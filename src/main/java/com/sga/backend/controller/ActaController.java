@@ -43,4 +43,14 @@ public class ActaController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    // HU08-04: Cierre autorizado por coordinador cuando docente no disponible
+    @PutMapping("/{id}/cerrar-coordinador")
+    public ResponseEntity<?> cerrarPorCoordinador(@PathVariable String id) {
+        try {
+            return ResponseEntity.ok(actaService.cerrarPorCoordinador(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

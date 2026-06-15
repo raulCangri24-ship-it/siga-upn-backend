@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,20 @@ public class EvaluacionService {
             req.getValor().compareTo(BigDecimal.ZERO) < 0 ||
             req.getValor().compareTo(new BigDecimal("20")) > 0) {
             throw new RuntimeException("La nota debe estar entre 0 y 20");
+        }
+
+        // HU-07: Verificar fecha de cierre del sílabo
+        Evaluacion evalCheck = evaluacionRepository.findById(req.getIdEvaluacion()).orElse(null);
+        if (evalCheck != null) {
+            silaboRepository.findById(evalCheck.getIdSilabo()).ifPresent(silabo -> {
+                if (silabo.getFechaCierre() != null &&
+                    LocalDate.now().isAfter(silabo.getFechaCierre())) {
+                    throw new RuntimeException(
+                        "Plazo vencido: el periodo de registro de notas cerró el " +
+                        silabo.getFechaCierre() +
+                        ". Solicite autorización al coordinador para modificar.");
+                }
+            });
         }
 
         Optional<Nota> existing = notaRepository
@@ -128,6 +143,11 @@ public class EvaluacionService {
 
     public List<Seccion> obtenerSeccionesDocente(String idDocente) {
         return seccionRepository.findByIdDocente(idDocente);
+    }
+
+    // HU08-02: Verificar si el estudiante tiene registrada una nota para una evaluación
+    public boolean tieneNota(String idEstudiante, String idEvaluacion) {
+        return notaRepository.findByIdEstudianteAndIdEvaluacion(idEstudiante, idEvaluacion).isPresent();
     }
 
     // Usado por ActaService para calcular promedio sin depender de este servicio

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -36,6 +37,9 @@ public class ActaService {
 
     @Transactional
     public ActaResponse generarActa(String idSeccion, String idDocente) {
+        // HU08-02: Verificar que todos los estudiantes tengan promedio completo
+        verificarNotasCompletas(idSeccion);
+
         Acta acta = new Acta();
         acta.setIdActa("ACT" + String.format("%09d", System.currentTimeMillis() % 1_000_000_000L));
         acta.setFechaGeneracion(LocalDateTime.now());
@@ -44,6 +48,25 @@ public class ActaService {
         acta.setIdSeccion(idSeccion);
         acta.setIdDocente(idDocente);
         actaRepository.save(acta);
+        return toResponse(acta);
+    }
+
+    // HU08-04: Cierre autorizado por coordinador
+    @Transactional
+    public ActaResponse cerrarPorCoordinador(String idActa) {
+        Acta acta = actaRepository.findById(idActa)
+            .orElseThrow(() -> new RuntimeException("Acta no encontrada: " + idActa));
+
+        if (acta.getEstado() == Acta.EstadoActa.FIRMADA) {
+            throw new RuntimeException("El acta ya está firmada y no puede modificarse");
+        }
+
+        acta.setEstado(Acta.EstadoActa.FIRMADA);
+        acta.setFechaFirma(LocalDateTime.now());
+        actaRepository.save(acta);
+
+        actualizarHistorial(acta.getIdSeccion());
+
         return toResponse(acta);
     }
 
@@ -63,6 +86,34 @@ public class ActaService {
         actualizarHistorial(acta.getIdSeccion());
 
         return toResponse(acta);
+    }
+
+    // HU08-02: Impedir generar acta si hay estudiantes sin notas completas
+    private void verificarNotasCompletas(String idSeccion) {
+        Silabo silabo = silaboRepository.findByIdSeccion(idSeccion).orElse(null);
+        if (silabo == null) return;
+
+        List<Evaluacion> evaluaciones = evaluacionRepository.findByIdSilabo(silabo.getIdSilabo());
+        if (evaluaciones.isEmpty()) return;
+
+        List<Matricula> matriculas = matriculaRepository.findByIdSeccion(idSeccion).stream()
+            .filter(m -> m.getEstado() == Matricula.EstadoMatricula.CONFIRMADA)
+            .collect(Collectors.toList());
+
+        List<String> sinNotas = new ArrayList<>();
+        for (Matricula m : matriculas) {
+            boolean tieneTodasLasNotas = evaluaciones.stream().allMatch(eva ->
+                evaluacionService.tieneNota(m.getIdEstudiante(), eva.getIdEvaluacion()));
+            if (!tieneTodasLasNotas) {
+                sinNotas.add(m.getIdEstudiante());
+            }
+        }
+
+        if (!sinNotas.isEmpty()) {
+            throw new RuntimeException(
+                "No se puede generar el acta: " + sinNotas.size() +
+                " estudiante(s) tienen evaluaciones pendientes de calificar");
+        }
     }
 
     private void actualizarHistorial(String idSeccion) {

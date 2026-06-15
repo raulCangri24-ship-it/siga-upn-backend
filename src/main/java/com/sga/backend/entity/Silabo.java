@@ -25,6 +25,9 @@ public class Silabo {
     @Column(name = "fechaPublicacion")
     private LocalDate fechaPublicacion;
 
+    @Column(name = "fechaCierre")
+    private LocalDate fechaCierre;
+
     @Column(name = "idSeccion", length = 15, nullable = false)
     private String idSeccion;
 
