@@ -37,7 +37,11 @@ public class ActaService {
 
     @Transactional
     public ActaResponse generarActa(String idSeccion, String idDocente) {
-        // HU08-02: Verificar que todos los estudiantes tengan promedio completo
+
+         if (actaRepository.findByIdSeccion(idSeccion).isEmpty()) {
+        throw new RuntimeException(
+            "Ya existe un acta generada para esta sección. No se puede generar otra.");
+    }
         verificarNotasCompletas(idSeccion);
 
         Acta acta = new Acta();
