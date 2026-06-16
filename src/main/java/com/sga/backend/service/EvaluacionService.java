@@ -36,18 +36,16 @@ public class EvaluacionService {
         }
 
         // HU-07: Verificar fecha de cierre del sílabo
-        Evaluacion evalCheck = evaluacionRepository.findById(req.getIdEvaluacion()).orElse(null);
-        if (evalCheck != null) {
-            silaboRepository.findById(evalCheck.getIdSilabo()).ifPresent(silabo -> {
-                if (silabo.getFechaCierre() != null &&
-                    LocalDate.now().isAfter(silabo.getFechaCierre())) {
-                    throw new RuntimeException(
-                        "Plazo vencido: el periodo de registro de notas cerró el " +
-                        silabo.getFechaCierre() +
-                        ". Solicite autorización al coordinador para modificar.");
-                }
-            });
-        }
+            Evaluacion evalCheck = evaluacionRepository.findById(req.getIdEvaluacion())
+                .orElseThrow(() -> new RuntimeException("Evaluación no encontrada"));
+            Silabo silabo = silaboRepository.findById(evalCheck.getIdSilabo()).orElse(null);
+            if (silabo != null && silabo.getFechaCierre() != null &&
+                LocalDate.now().isAfter(silabo.getFechaCierre())) {
+                throw new RuntimeException(
+                    "Plazo vencido: el periodo de registro de notas cerró el " +
+                    silabo.getFechaCierre() +
+                    ". Solicite autorización al coordinador para modificar.");
+            }
 
         Optional<Nota> existing = notaRepository
             .findByIdEstudianteAndIdEvaluacion(req.getIdEstudiante(), req.getIdEvaluacion());
