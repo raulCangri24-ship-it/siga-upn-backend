@@ -104,7 +104,13 @@ public class SincronizacionService {
     public EstadoEstudianteResponse levantarRestriccionPorDeuda(String idDeuda) {
         List<RestriccionFinanciera> activas = restriccionRepository.findByIdDeudaAndActiva(idDeuda, true);
         if (activas.isEmpty()) {
-            throw new RuntimeException("No existe restricción activa para esta deuda");
+            // Sin restricción activa para esta deuda — buscar por estudiante de la deuda
+            Deuda deuda = deudaRepository.findById(idDeuda).orElse(null);
+            if (deuda == null) return null;
+            List<RestriccionFinanciera> porEstudiante =
+                restriccionRepository.findByIdEstudianteAndActiva(deuda.getIdEstudiante(), true);
+            if (porEstudiante.isEmpty()) return null;
+            return levantarRestriccion(porEstudiante.get(0).getIdRestriccion());
         }
         return levantarRestriccion(activas.get(0).getIdRestriccion());
     }
