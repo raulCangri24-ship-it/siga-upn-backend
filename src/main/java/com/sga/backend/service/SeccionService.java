@@ -34,7 +34,7 @@ public class SeccionService {
         // HU03-06: Validar que el periodo no esté cerrado
         PeriodoAcademico periodo = periodoRepository.findById(req.getIdPeriodo())
             .orElseThrow(() -> new RuntimeException("Periodo no encontrado"));
-        if ("CERRADO".equals(periodo.getEstado())) {
+        if (PeriodoAcademico.EstadoPeriodo.CERRADO.equals(periodo.getEstado())) {
             throw new RuntimeException(
                 "No se puede programar clases: el periodo académico está cerrado");
         }
@@ -102,7 +102,7 @@ public class SeccionService {
         // HU03-06: Validar que el periodo no esté cerrado antes de editar
         PeriodoAcademico periodo = periodoRepository.findById(s.getIdPeriodo())
             .orElseThrow(() -> new RuntimeException("Periodo no encontrado"));
-        if ("CERRADO".equals(periodo.getEstado())) {
+        if (PeriodoAcademico.EstadoPeriodo.CERRADO.equals(periodo.getEstado())) {
             throw new RuntimeException(
                 "No se puede modificar la programación: el periodo académico está cerrado");
         }
