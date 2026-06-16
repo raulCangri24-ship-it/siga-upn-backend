@@ -39,7 +39,10 @@ public class PagoController {
     }
 
     @GetMapping
-    public ResponseEntity<List<PagoResponse>> listarTodos() {
+    public ResponseEntity<?> listarTodos(HttpServletRequest request) {
+        if (!esAdmin(request))
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body("Acceso denegado: no tienes permisos para ver los pagos");
         return ResponseEntity.ok(pagoService.listarTodos());
     }
 

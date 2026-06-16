@@ -117,6 +117,16 @@ public class MatriculaService {
             .map(Matricula::getIdSeccion)
             .collect(Collectors.toList());
 
+        // HU04-05: Calcular ciclo máximo permitido para el estudiante
+        int cicloMax = Integer.MAX_VALUE;
+        List<UsuarioPlan> planesConFecha = usuarioPlanRepository.findByIdUsuario(idEstudiante);
+        if (!planesConFecha.isEmpty() && planesConFecha.get(0).getFechaAsignacion() != null) {
+            int anioIngreso = planesConFecha.get(0).getFechaAsignacion().getYear();
+            int cicloActual = (2026 - anioIngreso) * 2 + 1;
+            cicloMax = cicloActual + 1;
+        }
+        final int cicloMaxFinal = cicloMax;
+
         for (Seccion s : secciones) {
             if (seccionesMatriculadas.contains(s.getIdSeccion())) continue;
 
@@ -125,6 +135,9 @@ public class MatriculaService {
 
             // HU04-05: Solo cursos del plan del estudiante
             if (!planesEstudiante.isEmpty() && !planesEstudiante.contains(curso.getIdPlan())) continue;
+
+            // HU04-05: Solo cursos hasta cicloActual+1
+            if (curso.getCiclo() != null && curso.getCiclo() > cicloMaxFinal) continue;
 
             String mensajePrereq = verificarPrerrequisitos(idEstudiante, s.getIdCurso());
             boolean prereqCumplido = mensajePrereq == null;
