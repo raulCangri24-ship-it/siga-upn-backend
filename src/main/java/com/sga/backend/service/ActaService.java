@@ -38,7 +38,7 @@ public class ActaService {
     @Transactional
     public ActaResponse generarActa(String idSeccion, String idDocente) {
 
-         if (actaRepository.findByIdSeccion(idSeccion).isEmpty()) {
+         if (!actaRepository.findByIdSeccion(idSeccion).isEmpty()) {
         throw new RuntimeException(
             "Ya existe un acta generada para esta sección. No se puede generar otra.");
     }
